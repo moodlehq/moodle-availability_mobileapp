@@ -35,6 +35,12 @@ defined('MOODLE_INTERNAL') || die();
  */
 class condition extends \core_availability\condition {
 
+    /**  @var int Mobile app access */
+    const MOBILE_APP = 1;
+
+    /**  @var int Not mobile app access */
+    const NOT_MOBILE_APP = 2;
+
     /** @var int Expected access type selected */
     protected $accesstype;
 
@@ -71,8 +77,20 @@ class condition extends \core_availability\condition {
         return (object)array('type' => 'mobileapp', 'e' => (int)$accesstype);
     }
 
+    protected function get_debug_string() {
+        return '#' . $this->accesstype;
+    }
+
     public function is_available($not, \core_availability\info $info, $grabthelot, $userid) {
         $allow = false;
+
+        if (WS_SERVER && $this->accesstype == self::MOBILE_APP) {
+            $allow = true;
+        }
+
+        if (!WS_SERVER && $this->accesstype == self::NOT_MOBILE_APP) {
+            $allow = true;
+        }
 
         if ($not) {
             $allow = !$allow;
@@ -82,6 +100,16 @@ class condition extends \core_availability\condition {
     }
 
     public function get_description($full, $not, \core_availability\info $info) {
+
+        if ($this->accesstype == self::MOBILE_APP) {
+            $str = 'requires_app';
+        } else {
+            $str = 'requires_notapp';
+        }
+
+        if ($not) {
+            $str = ($str == 'requires_app') ? 'requires_notapp' : 'requires_app';
+        }
 
         return get_string($str, 'availability_mobileapp');
     }
