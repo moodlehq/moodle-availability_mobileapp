@@ -41,8 +41,12 @@ class availability_mobileapp_condition_testcase extends advanced_testcase {
      */
     public function setUp() {
         // Load the mock info class so that it can be used.
-        global $CFG;
+        global $CFG, $DB;
         require_once($CFG->dirroot . '/availability/tests/fixtures/mock_info.php');
+
+        // Enable web services and the official mobile app service.
+        $CFG->enablewebservices = true;
+        $DB->set_field('external_services', 'enabled', 1, array("shortname" => MOODLE_OFFICIAL_MOBILE_SERVICE));
     }
 
     /**
@@ -51,37 +55,36 @@ class availability_mobileapp_condition_testcase extends advanced_testcase {
     public function test_in_tree() {
         global $USER, $CFG;
         $this->resetAfterTest();
-
         $this->setAdminUser();
 
-        $CFG->enablewebservices = true;
-        $CFG->enableavailability = true;
-
         $generator = $this->getDataGenerator();
-        $course = $generator->create_course(array('enablecompletion' => 1));
+        $course = $generator->create_course();
         $page = $generator->get_plugin_generator('mod_page')->create_instance(
-                array('course' => $course->id, 'completion' => COMPLETION_TRACKING_MANUAL));
+                array('course' => $course->id));
 
         $modinfo = get_fast_modinfo($course);
         $cm = $modinfo->get_cm($page->cmid);
         $info = new \core_availability\mock_info($course, $USER->id);
 
         $structure = (object)array('op' => '|', 'show' => true, 'c' => array(
-                (object)array('type' => 'completion', 'cm' => (int)$cm->id,
-                'e' => COMPLETION_COMPLETE)));
+                (object)array('type' => 'mobileapp', 'cm' => (int)$cm->id,
+                'e' => condition::NOT_MOBILE_APP)));
         $tree = new \core_availability\tree($structure);
 
-        // Initial check (user has not completed activity).
+        // Check it's true.
+        $result = $tree->check_available(false, $info, true, $USER->id);
+        $this->assertTrue($result->is_available());
+
+        // We cannot mock the WS_SERVER, so we need to create a new condion tree.
+        $structure = (object)array('op' => '|', 'show' => true, 'c' => array(
+                (object)array('type' => 'mobileapp', 'cm' => (int)$cm->id,
+                'e' => condition::MOBILE_APP)));
+        $tree = new \core_availability\tree($structure);
+
+        // Check it's false.
         $result = $tree->check_available(false, $info, true, $USER->id);
         $this->assertFalse($result->is_available());
 
-        // Mark activity complete.
-        $completion = new completion_info($course);
-        $completion->update_state($cm, COMPLETION_COMPLETE);
-
-        // Now it's true!
-        $result = $tree->check_available(false, $info, true, $USER->id);
-        $this->assertTrue($result->is_available());
     }
 
     /**
@@ -91,33 +94,8 @@ class availability_mobileapp_condition_testcase extends advanced_testcase {
     public function test_constructor() {
         // No parameters.
         $structure = new stdClass();
-        try {
-            $cond = new condition($structure);
-            $this->fail();
-        } catch (coding_exception $e) {
-            $this->assertContains('Missing or invalid ->cm', $e->getMessage());
-        }
-
-        // Invalid $cm.
-        $structure->cm = 'hello';
-        try {
-            $cond = new condition($structure);
-            $this->fail();
-        } catch (coding_exception $e) {
-            $this->assertContains('Missing or invalid ->cm', $e->getMessage());
-        }
-
-        // Missing $e.
-        $structure->cm = 42;
-        try {
-            $cond = new condition($structure);
-            $this->fail();
-        } catch (coding_exception $e) {
-            $this->assertContains('Missing or invalid ->e', $e->getMessage());
-        }
 
         // Invalid $e.
-        $structure->e = 99;
         try {
             $cond = new condition($structure);
             $this->fail();
@@ -126,30 +104,22 @@ class availability_mobileapp_condition_testcase extends advanced_testcase {
         }
 
         // Successful construct & display with all different expected values.
-        $structure->e = COMPLETION_COMPLETE;
+        $structure->e = condition::NOT_MOBILE_APP;
         $cond = new condition($structure);
-        $this->assertEquals('{completion:cm42 COMPLETE}', (string)$cond);
+        $this->assertEquals('{mobileapp:#2}', (string)$cond);
 
-        $structure->e = COMPLETION_COMPLETE_PASS;
+        $structure->e = condition::MOBILE_APP;
         $cond = new condition($structure);
-        $this->assertEquals('{completion:cm42 COMPLETE_PASS}', (string)$cond);
-
-        $structure->e = COMPLETION_COMPLETE_FAIL;
-        $cond = new condition($structure);
-        $this->assertEquals('{completion:cm42 COMPLETE_FAIL}', (string)$cond);
-
-        $structure->e = COMPLETION_INCOMPLETE;
-        $cond = new condition($structure);
-        $this->assertEquals('{completion:cm42 INCOMPLETE}', (string)$cond);
+        $this->assertEquals('{mobileapp:#1}', (string)$cond);
     }
 
     /**
      * Tests the save() function.
      */
     public function test_save() {
-        $structure = (object)array('cm' => 42, 'e' => COMPLETION_COMPLETE);
+        $structure = (object)array('e' => condition::MOBILE_APP);
         $cond = new condition($structure);
-        $structure->type = 'completion';
+        $structure->type = 'mobileapp';
         $this->assertEquals($structure, $cond->save());
     }
 
@@ -158,183 +128,13 @@ class availability_mobileapp_condition_testcase extends advanced_testcase {
      */
     public function test_usage() {
         global $CFG, $DB;
-        require_once($CFG->dirroot . '/mod/assign/locallib.php');
         $this->resetAfterTest();
 
-        // Create course with completion turned on.
-        $CFG->enablecompletion = true;
-        $CFG->enableavailability = true;
-        $generator = $this->getDataGenerator();
-        $course = $generator->create_course(array('enablecompletion' => 1));
-        $user = $generator->create_user();
-        $generator->enrol_user($user->id, $course->id);
-        $this->setUser($user);
+        $mobileapp = new condition((object)array('e' => condition::MOBILE_APP));
+        $this->assertFalse($mobileapp->is_available(false, $info, true, $USER->id));
 
-        // Create a Page with manual completion for basic checks.
-        $page = $generator->get_plugin_generator('mod_page')->create_instance(
-                array('course' => $course->id, 'name' => 'Page!',
-                'completion' => COMPLETION_TRACKING_MANUAL));
+        $mobileapp = new condition((object)array('e' => condition::NOT_MOBILE_APP));
+        $this->assertTrue($mobileapp->is_available(false, $info, true, $USER->id));
 
-        // Create an assignment - we need to have something that can be graded
-        // so as to test the PASS/FAIL states. Set it up to be completed based
-        // on its grade item.
-        $assignrow = $this->getDataGenerator()->create_module('assign', array(
-                'course' => $course->id, 'name' => 'Assign!',
-                'completion' => COMPLETION_TRACKING_AUTOMATIC));
-        $DB->set_field('course_modules', 'completiongradeitemnumber', 0,
-                array('id' => $assignrow->cmid));
-        $assign = new assign(context_module::instance($assignrow->cmid), false, false);
-
-        // Get basic details.
-        $modinfo = get_fast_modinfo($course);
-        $pagecm = $modinfo->get_cm($page->cmid);
-        $assigncm = $assign->get_course_module();
-        $info = new \core_availability\mock_info($course, $user->id);
-
-        // COMPLETE state (false), positive and NOT.
-        $cond = new condition((object)array(
-                'cm' => (int)$pagecm->id, 'e' => COMPLETION_COMPLETE));
-        $this->assertFalse($cond->is_available(false, $info, true, $user->id));
-        $information = $cond->get_description(false, false, $info);
-        $information = \core_availability\info::format_info($information, $course);
-        $this->assertRegExp('~Page!.*is marked complete~', $information);
-        $this->assertTrue($cond->is_available(true, $info, true, $user->id));
-
-        // INCOMPLETE state (true).
-        $cond = new condition((object)array(
-                'cm' => (int)$pagecm->id, 'e' => COMPLETION_INCOMPLETE));
-        $this->assertTrue($cond->is_available(false, $info, true, $user->id));
-        $this->assertFalse($cond->is_available(true, $info, true, $user->id));
-        $information = $cond->get_description(false, true, $info);
-        $information = \core_availability\info::format_info($information, $course);
-        $this->assertRegExp('~Page!.*is marked complete~', $information);
-
-        // Mark page complete.
-        $completion = new completion_info($course);
-        $completion->update_state($pagecm, COMPLETION_COMPLETE);
-
-        // COMPLETE state (true).
-        $cond = new condition((object)array(
-                'cm' => (int)$pagecm->id, 'e' => COMPLETION_COMPLETE));
-        $this->assertTrue($cond->is_available(false, $info, true, $user->id));
-        $this->assertFalse($cond->is_available(true, $info, true, $user->id));
-        $information = $cond->get_description(false, true, $info);
-        $information = \core_availability\info::format_info($information, $course);
-        $this->assertRegExp('~Page!.*is incomplete~', $information);
-
-        // INCOMPLETE state (false).
-        $cond = new condition((object)array(
-                'cm' => (int)$pagecm->id, 'e' => COMPLETION_INCOMPLETE));
-        $this->assertFalse($cond->is_available(false, $info, true, $user->id));
-        $information = $cond->get_description(false, false, $info);
-        $information = \core_availability\info::format_info($information, $course);
-        $this->assertRegExp('~Page!.*is incomplete~', $information);
-        $this->assertTrue($cond->is_available(true, $info,
-                true, $user->id));
-
-        // We are going to need the grade item so that we can get pass/fails.
-        $gradeitem = $assign->get_grade_item();
-        grade_object::set_properties($gradeitem, array('gradepass' => 50.0));
-        $gradeitem->update();
-
-        // With no grade, it should return true for INCOMPLETE and false for
-        // the other three.
-        $cond = new condition((object)array(
-                'cm' => (int)$assigncm->id, 'e' => COMPLETION_INCOMPLETE));
-        $this->assertTrue($cond->is_available(false, $info, true, $user->id));
-        $this->assertFalse($cond->is_available(true, $info, true, $user->id));
-
-        $cond = new condition((object)array(
-                'cm' => (int)$assigncm->id, 'e' => COMPLETION_COMPLETE));
-        $this->assertFalse($cond->is_available(false, $info, true, $user->id));
-        $this->assertTrue($cond->is_available(true, $info, true, $user->id));
-
-        // Check $information for COMPLETE_PASS and _FAIL as we haven't yet.
-        $cond = new condition((object)array(
-                'cm' => (int)$assigncm->id, 'e' => COMPLETION_COMPLETE_PASS));
-        $this->assertFalse($cond->is_available(false, $info, true, $user->id));
-        $information = $cond->get_description(false, false, $info);
-        $information = \core_availability\info::format_info($information, $course);
-        $this->assertRegExp('~Assign!.*is complete and passed~', $information);
-        $this->assertTrue($cond->is_available(true, $info, true, $user->id));
-
-        $cond = new condition((object)array(
-                'cm' => (int)$assigncm->id, 'e' => COMPLETION_COMPLETE_FAIL));
-        $this->assertFalse($cond->is_available(false, $info, true, $user->id));
-        $information = $cond->get_description(false, false, $info);
-        $information = \core_availability\info::format_info($information, $course);
-        $this->assertRegExp('~Assign!.*is complete and failed~', $information);
-        $this->assertTrue($cond->is_available(true, $info, true, $user->id));
-
-        // Change the grade to be complete and failed.
-        self::set_grade($assignrow, $user->id, 40);
-
-        $cond = new condition((object)array(
-                'cm' => (int)$assigncm->id, 'e' => COMPLETION_INCOMPLETE));
-        $this->assertFalse($cond->is_available(false, $info, true, $user->id));
-        $this->assertTrue($cond->is_available(true, $info, true, $user->id));
-
-        $cond = new condition((object)array(
-                'cm' => (int)$assigncm->id, 'e' => COMPLETION_COMPLETE));
-        $this->assertTrue($cond->is_available(false, $info, true, $user->id));
-        $this->assertFalse($cond->is_available(true, $info, true, $user->id));
-
-        $cond = new condition((object)array(
-                'cm' => (int)$assigncm->id, 'e' => COMPLETION_COMPLETE_PASS));
-        $this->assertFalse($cond->is_available(false, $info, true, $user->id));
-        $information = $cond->get_description(false, false, $info);
-        $information = \core_availability\info::format_info($information, $course);
-        $this->assertRegExp('~Assign!.*is complete and passed~', $information);
-        $this->assertTrue($cond->is_available(true, $info, true, $user->id));
-
-        $cond = new condition((object)array(
-                'cm' => (int)$assigncm->id, 'e' => COMPLETION_COMPLETE_FAIL));
-        $this->assertTrue($cond->is_available(false, $info, true, $user->id));
-        $this->assertFalse($cond->is_available(true, $info, true, $user->id));
-        $information = $cond->get_description(false, true, $info);
-        $information = \core_availability\info::format_info($information, $course);
-        $this->assertRegExp('~Assign!.*is not complete and failed~', $information);
-
-        // Now change it to pass.
-        self::set_grade($assignrow, $user->id, 60);
-
-        $cond = new condition((object)array(
-                'cm' => (int)$assigncm->id, 'e' => COMPLETION_INCOMPLETE));
-        $this->assertFalse($cond->is_available(false, $info, true, $user->id));
-        $this->assertTrue($cond->is_available(true, $info, true, $user->id));
-
-        $cond = new condition((object)array(
-                'cm' => (int)$assigncm->id, 'e' => COMPLETION_COMPLETE));
-        $this->assertTrue($cond->is_available(false, $info, true, $user->id));
-        $this->assertFalse($cond->is_available(true, $info, true, $user->id));
-
-        $cond = new condition((object)array(
-                'cm' => (int)$assigncm->id, 'e' => COMPLETION_COMPLETE_PASS));
-        $this->assertTrue($cond->is_available(false, $info, true, $user->id));
-        $this->assertFalse($cond->is_available(true, $info, true, $user->id));
-        $information = $cond->get_description(false, true, $info);
-        $information = \core_availability\info::format_info($information, $course);
-        $this->assertRegExp('~Assign!.*is not complete and passed~', $information);
-
-        $cond = new condition((object)array(
-                'cm' => (int)$assigncm->id, 'e' => COMPLETION_COMPLETE_FAIL));
-        $this->assertFalse($cond->is_available(false, $info, true, $user->id));
-        $information = $cond->get_description(false, false, $info);
-        $information = \core_availability\info::format_info($information, $course);
-        $this->assertRegExp('~Assign!.*is complete and failed~', $information);
-        $this->assertTrue($cond->is_available(true, $info, true, $user->id));
-
-        // Simulate deletion of an activity by using an invalid cmid. These
-        // conditions always fail, regardless of NOT flag or INCOMPLETE.
-        $cond = new condition((object)array(
-                'cm' => ($assigncm->id + 100), 'e' => COMPLETION_COMPLETE));
-        $this->assertFalse($cond->is_available(false, $info, true, $user->id));
-        $information = $cond->get_description(false, false, $info);
-        $information = \core_availability\info::format_info($information, $course);
-        $this->assertRegExp('~(Missing activity).*is marked complete~', $information);
-        $this->assertFalse($cond->is_available(true, $info, true, $user->id));
-        $cond = new condition((object)array(
-                'cm' => ($assigncm->id + 100), 'e' => COMPLETION_INCOMPLETE));
-        $this->assertFalse($cond->is_available(false, $info, true, $user->id));
     }
 }
