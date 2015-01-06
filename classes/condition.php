@@ -81,14 +81,39 @@ class condition extends \core_availability\condition {
         return '#' . $this->accesstype;
     }
 
+    /**
+     * Detects if the user is accesing Moodle via Web Services.
+     * @return boolean True if the user is accesing via WS
+     */
+    protected function is_ws_access() {
+        global $ME;
+
+        // First check this global const.
+        if (WS_SERVER) {
+            return true;
+        }
+
+        // Check rare cases, like webservice/pluginfile.php.
+        if (strpos($ME, "webservice/") !== false) {
+            $token = optional_param('token', '', PARAM_ALPHANUM);
+            if ($token) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function is_available($not, \core_availability\info $info, $grabthelot, $userid) {
+
         $allow = false;
 
-        if (WS_SERVER && $this->accesstype == self::MOBILE_APP) {
+        // Detect if we are accesing via Webservices.
+        if ($this->is_ws_access() && $this->accesstype == self::MOBILE_APP) {
             $allow = true;
         }
 
-        if (!WS_SERVER && $this->accesstype == self::NOT_MOBILE_APP) {
+        if (!$this->is_ws_access() && $this->accesstype == self::NOT_MOBILE_APP) {
             $allow = true;
         }
 
