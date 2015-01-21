@@ -18,8 +18,11 @@ Feature: availability_mobileapp
       | student1 | C1     | student        |
     And I log in as "admin"
     And I set the following administration settings values:
+      | Enable conditional access  | 1 |
       | Enable web services                    | 1 |
-      | Enable web services for mobile devices | 1 |
+    And I navigate to "Mobile" node in "Site administration > Plugins > Web services"
+    And I click on "Enable web services for mobile devices" "checkbox"
+    And I click on "Save changes" "button"
     And I log out
 
   @javascript
@@ -29,7 +32,7 @@ Feature: availability_mobileapp
     And I follow "Course 1"
     And I turn editing mode on
 
-    # Add a Page with a Mobile app condition that does match.
+    # Add a Page with a Mobile app condition that does not match.
     And I add a "Page" to section "1"
     And I set the following fields to these values:
       | Name         | Page 1 |
@@ -39,10 +42,10 @@ Feature: availability_mobileapp
     And I click on "Add restriction..." "button"
     And I click on "Mobile app" "button" in the "Add restriction..." "dialogue"
     And I click on ".availability-item .availability-eye img" "css_element"
-    And I set the field "e" to "2"
+    And I set the field "Mobile app" to "Access using the Mobile app"
     And I press "Save and return to course"
 
-    # Add a Page with a date condition that doesn't match.
+    # Add a Page with a date condition that does match.
     And I add a "Page" to section "2"
     And I set the following fields to these values:
       | Name         | Page 2 |
@@ -52,7 +55,7 @@ Feature: availability_mobileapp
     And I click on "Add restriction..." "button"
     And I click on "Mobile app" "button" in the "Add restriction..." "dialogue"
     And I click on ".availability-item .availability-eye img" "css_element"
-    And I set the field "e" to "2"
+    And I set the field "Mobile app" to "Access NOT using the Mobile app"
     And I press "Save and return to course"
 
     # Log back in as student.
@@ -61,5 +64,5 @@ Feature: availability_mobileapp
     And I follow "Course 1"
 
     # Page 1 should appear, but page 2 does not.
-    Then I should see "Page 1" in the "region-main" "region"
-    And I should not see "Page 2" in the "region-main" "region"
+    Then I should not see "Page 1" in the "region-main" "region"
+    And I should see "Page 2" in the "region-main" "region"
