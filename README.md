@@ -1,5 +1,5 @@
-moodle-availability_mobileapp
-=============================
+Moodle Mobile app availabilty plugin
+====================================
 
 Control module and section access for Moodle Mobile app.
 
