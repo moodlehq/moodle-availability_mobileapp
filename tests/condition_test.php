@@ -43,10 +43,6 @@ class availability_mobileapp_condition_testcase extends advanced_testcase {
         // Load the mock info class so that it can be used.
         global $CFG, $DB;
         require_once($CFG->dirroot . '/availability/tests/fixtures/mock_info.php');
-
-        // Enable web services and the official mobile app service.
-        $CFG->enablewebservices = true;
-        $DB->set_field('external_services', 'enabled', 1, array("shortname" => MOODLE_OFFICIAL_MOBILE_SERVICE));
     }
 
     /**
@@ -127,8 +123,12 @@ class availability_mobileapp_condition_testcase extends advanced_testcase {
      * Tests the is_available and get_description functions.
      */
     public function test_usage() {
-        global $CFG, $DB;
+        global $USER;
         $this->resetAfterTest();
+
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $info = new \core_availability\mock_info($course, $USER->id);
 
         $mobileapp = new condition((object)array('e' => condition::MOBILE_APP));
         $this->assertFalse($mobileapp->is_available(false, $info, true, $USER->id));
