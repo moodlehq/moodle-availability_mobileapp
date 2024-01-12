@@ -96,7 +96,7 @@ class availability_mobileapp_condition_testcase extends advanced_testcase {
             $cond = new condition($structure);
             $this->fail();
         } catch (coding_exception $e) {
-            $this->assertContains('Missing or invalid ->e', $e->getMessage());
+            $this->assertStringContainsString('Missing or invalid ->e', $e->getMessage());
         }
 
         // Successful construct & display with all different expected values.
