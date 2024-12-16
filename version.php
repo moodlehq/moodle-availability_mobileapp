@@ -24,7 +24,7 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version = 2024161200;
+$plugin->version = 2024121600;
 $plugin->requires = 2021051700; // Moodle 3.11.
 $plugin->component = 'availability_mobileapp';
 $plugin->maturity = MATURITY_STABLE;
