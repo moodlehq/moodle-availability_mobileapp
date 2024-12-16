@@ -7,4 +7,4 @@ With this plugin you can choose if an activity, resource or a complete section i
 
 Once installed you can create Moodle Mobile friendly courses just replacing resources currently not supported by the app, like the Book module, with Mobile friendly resources (like an HTML version of the book module).
 
-For Moodle 3.10 and bellow please use the MOODLE_310_BRANCH
+For Moodle 3.10 and bellow please use the MOODLE_310_STABLE branch
